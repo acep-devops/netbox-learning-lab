@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=netbox
+      - POSTGRES_USER=netbox
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - netbox-postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  redis-cache:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  netbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: netboxcommunity/netbox:latest
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - redis
+      - redis-cache
+    ports:
+      - "8888:8080"
+    environment:
+      - PLUGINS=netbox_topology_views
+      - DB_HOST=postgres
+      - DB_NAME=netbox
+      - DB_USER=netbox
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+      - ALLOWED_HOSTS=*
+      - SUPERUSER_NAME=${ADMIN_USER}
+      - SUPERUSER_EMAIL=${ADMIN_EMAIL}
+      - SUPERUSER_PASSWORD=${ADMIN_PASSWORD}
+    volumes:
+      - netbox-media-files:/opt/netbox/netbox/media
+      - netbox-reports-files:/opt/netbox/netbox/reports
+      - netbox-scripts-files:/opt/netbox/netbox/scripts
+
+  netbox-worker:
+    image: netboxcommunity/netbox:latest
+    restart: unless-stopped
+    depends_on:
+      - netbox
+    command:
+      - /opt/netbox/venv/bin/python
+      - /opt/netbox/netbox/manage.py
+      - rqworker
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=netbox
+      - DB_USER=netbox
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - netbox-media-files:/opt/netbox/netbox/media
+      - netbox-reports-files:/opt/netbox/netbox/reports
+      - netbox-scripts-files:/opt/netbox/netbox/scripts
+
+  netbox-housekeeping:
+    image: netboxcommunity/netbox:latest
+    restart: unless-stopped
+    depends_on:
+      - netbox
+    command:
+      - /opt/netbox/housekeeping.sh
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=netbox
+      - DB_USER=netbox
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_CACHE_HOST=redis-cache
+      - REDIS_CACHE_PORT=6379
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - netbox-media-files:/opt/netbox/netbox/media
+      - netbox-reports-files:/opt/netbox/netbox/reports
+      - netbox-scripts-files:/opt/netbox/netbox/scripts
+
+volumes:
+  netbox-postgres-data:
+  netbox-media-files:
+  netbox-reports-files:
+  netbox-scripts-files:
